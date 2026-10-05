@@ -1,0 +1,6 @@
+{
+  "name": "Daily Digest",
+  "description": "Personal news and research digest with AI summarization, trusted sources, and citations",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
