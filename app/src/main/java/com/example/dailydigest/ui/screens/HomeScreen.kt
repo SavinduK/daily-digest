@@ -42,12 +42,16 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -431,11 +435,9 @@ private fun DailySummaryCard(
             Spacer(modifier = Modifier.height(16.dp))
 
             if (summary != null && summary.text.isNotBlank()) {
-                Text(
+                FormattedSummaryText(
                     text = summary.text,
-                    style = MaterialTheme.typography.bodyLarge,
-                    lineHeight = 25.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f)
+                    modifier = Modifier.fillMaxWidth()
                 )
 
                 Spacer(modifier = Modifier.height(20.dp))
@@ -497,3 +499,42 @@ private fun DailySummaryCard(
         }
     }
 }
+
+@Composable
+fun FormattedSummaryText(
+    text: String,
+    modifier: Modifier = Modifier
+) {
+    val annotatedString = remember(text) {
+        buildAnnotatedString {
+            val pattern = Regex("""\*\*(.*?)\*\*""")
+            var currentIndex = 0
+            val matches = pattern.findAll(text)
+
+            for (match in matches) {
+                val range = match.range
+                if (range.first > currentIndex) {
+                    append(text.substring(currentIndex, range.first))
+                }
+                val boldContent = match.groupValues[1]
+                withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                    append(boldContent)
+                }
+                currentIndex = range.last + 1
+            }
+
+            if (currentIndex < text.length) {
+                append(text.substring(currentIndex))
+            }
+        }
+    }
+
+    Text(
+        text = annotatedString,
+        style = MaterialTheme.typography.bodyLarge,
+        lineHeight = 24.sp,
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f),
+        modifier = modifier
+    )
+}
+

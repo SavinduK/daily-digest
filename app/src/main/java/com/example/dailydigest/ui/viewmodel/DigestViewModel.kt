@@ -42,6 +42,18 @@ class DigestViewModel(application: Application) : AndroidViewModel(application) 
 
     fun selectTab(index: Int) {
         _selectedTab.value = index
+        _isManagingTopics.value = false
+    }
+
+    // Subscreen state for Topic Management (opened via '+' icon on Digest page)
+    private val _isManagingTopics = MutableStateFlow(false)
+    val isManagingTopics: StateFlow<Boolean> = _isManagingTopics.asStateFlow()
+
+    fun setManagingTopics(managing: Boolean) {
+        _isManagingTopics.value = managing
+        if (managing) {
+            startNewTopic()
+        }
     }
 
     // Data streams
@@ -233,7 +245,7 @@ class DigestViewModel(application: Application) : AndroidViewModel(application) 
 
         viewModelScope.launch {
             val id = editingTopicId.value
-            if (id == null) {
+            val savedTopicId = if (id == null) {
                 repository.insertTopicWithDetails(
                     name = name,
                     keywords = topicKeywords.value,
@@ -246,9 +258,17 @@ class DigestViewModel(application: Application) : AndroidViewModel(application) 
                     keywords = topicKeywords.value,
                     sources = topicSources.value
                 )
+                id
             }
             startNewTopic()
             onSaved()
+
+            // Automatically generate current status entry for this topic
+            try {
+                repository.generateDigestForSingleTopic(savedTopicId)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 

@@ -265,6 +265,72 @@ class DigestRepository(
         }
     }
 
+    /**
+     * Generates or refreshes digest and current status for a single topic.
+     * Evaluates current area status as the first entry, or returns 0 if nothing of interest today.
+     */
+    suspend fun generateDigestForSingleTopic(
+        topicId: Long,
+        progressCallback: ((step: String, progress: Float) -> Unit)? = null
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        try {
+            val apiKey = preferencesManager.apiKeyFlow.first()
+            if (apiKey.isBlank()) {
+                return@withContext Result.failure(IllegalStateException("Gemini API key is not configured. Go to Settings."))
+            }
+            val model = preferencesManager.selectedModelFlow.first()
+            val topic = topicDao.getTopicById(topicId) ?: return@withContext Result.failure(IllegalArgumentException("Topic not found"))
+            val todayDate = getTodayDateString()
+
+            progressCallback?.invoke("Fetching feeds for ${topic.name}...", 0.2f)
+            val keywords = keywordDao.getKeywordsForTopicSync(topic.id)
+            val sources = sourceDao.getSourcesForTopicSync(topic.id)
+            val fetched = rssFetcher.fetchArticlesForTopic(topic, keywords, sources)
+
+            val savedArticles = mutableListOf<Article>()
+            fetched.forEach { article ->
+                val id = articleDao.insertArticle(article)
+                savedArticles.add(article.copy(id = id))
+            }
+
+            if (savedArticles.isEmpty()) {
+                return@withContext Result.success(0)
+            }
+
+            progressCallback?.invoke("Synthesizing current status for ${topic.name}...", 0.6f)
+            val geminiResults = geminiClient.generateTopicDigest(
+                apiKey = apiKey,
+                model = model,
+                topicName = topic.name,
+                articles = savedArticles
+            )
+
+            // Delete existing items for this topic and replace with fresh results
+            digestItemDao.deleteDigestForTopic(topic.id)
+            val newItems = geminiResults.map { res ->
+                DigestItem(
+                    date = todayDate,
+                    topicId = topic.id,
+                    title = res.title,
+                    shortSummary = res.shortSummary,
+                    detailedSummary = res.detailedSummary,
+                    importanceScore = res.importanceScore,
+                    relevanceScore = res.relevanceScore,
+                    sourceArticleIds = res.sourceIds.joinToString(",")
+                )
+            }
+
+            if (newItems.isNotEmpty()) {
+                digestItemDao.insertDigestItems(newItems)
+            }
+
+            progressCallback?.invoke("Status updated!", 1.0f)
+            Result.success(newItems.size)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun clearAllData() = withContext(Dispatchers.IO) {
         database.clearAllTables()
         preferencesManager.clearAllPreferences()

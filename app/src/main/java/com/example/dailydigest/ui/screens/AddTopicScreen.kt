@@ -1,5 +1,6 @@
 package com.example.dailydigest.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
@@ -65,8 +67,13 @@ import com.example.dailydigest.ui.viewmodel.DigestViewModel
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AddTopicScreen(
-    viewModel: DigestViewModel
+    viewModel: DigestViewModel,
+    onBack: () -> Unit = {}
 ) {
+    BackHandler {
+        onBack()
+    }
+
     val topics by viewModel.allTopics.collectAsStateWithLifecycle()
     val editingTopicId by viewModel.editingTopicId.collectAsStateWithLifecycle()
     val topicName by viewModel.topicNameInput.collectAsStateWithLifecycle()
@@ -112,21 +119,36 @@ fun AddTopicScreen(
             .padding(16.dp)
             .testTag("add_topic_screen")
     ) {
-        // Header
-        Column {
-            Text(
-                text = "TOPICS & FEEDS",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-                letterSpacing = 1.2.sp
-            )
-            Text(
-                text = if (editingTopicId == null) "Create News Topic" else "Edit Topic",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.colorScheme.onBackground
-            )
+        // Header with Back Button
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.testTag("back_to_digest_button")
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back to Digest"
+                )
+            }
+            Spacer(modifier = Modifier.width(4.dp))
+            Column {
+                Text(
+                    text = "TOPICS & FEEDS",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    letterSpacing = 1.2.sp
+                )
+                Text(
+                    text = if (editingTopicId == null) "Create News Topic" else "Edit Topic",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -525,7 +547,7 @@ fun AddTopicScreen(
                     }
 
                     Button(
-                        onClick = { viewModel.saveCurrentTopic { /* saved */ } },
+                        onClick = { viewModel.saveCurrentTopic { onBack() } },
                         enabled = topicName.isNotBlank(),
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.testTag("save_topic_button")

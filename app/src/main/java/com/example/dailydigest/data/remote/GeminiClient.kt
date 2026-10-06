@@ -186,26 +186,36 @@ Below is the list of recent articles collected for this topic:
 $articlesListing
 
 CRITICAL REQUIREMENTS:
-1. Use ONLY the supplied articles above. NEVER invent facts or hallucinate details.
-2. Group related articles into 2 to 6 key stories or developments for this topic.
-3. Every single claim must be directly supported by one or more article IDs.
-4. Every item MUST explicitly list the source article IDs in `sourceIds`.
-5. For each item provide:
-   - "title": Clear, engaging headline of the development.
-   - "shortSummary": Maximum 2 concise sentences summarizing the essence.
+1. RELEVANCE & VALUE FILTER:
+   Evaluate whether there are actual meaningful or interesting developments for "$topicName" today.
+   IF THERE IS NOTHING OF REAL INTEREST OR RELEVANCE FOR THIS TOPIC TODAY, RETURN AN EMPTY JSON ARRAY: []
+   Never fabricate news or promote trivial filler.
+2. CURRENT STATUS AS FIRST ENTRY:
+   If there ARE meaningful developments, the VERY FIRST entry in the array (Item 1) MUST synthesize the "Current Status & Landscape" of this area based on the collected articles:
+   - For technical/AI topics (e.g., Open Source LLMs): detail the current top-tier models, where to find/access them, and primary research directions.
+   - For books/authors/media: detail current releases, upcoming books, and release timelines.
+   - For science/medicine: detail current state-of-the-art standards and breakthrough directions.
+   Set its "title" to: "Current Status: $topicName" (or specific focal area).
+3. SUBSEQUENT ENTRIES:
+   Follow with 1 to 4 distinct key stories or specific news items from today.
+4. STRICT CITATIONS:
+   Use ONLY the supplied articles above. NEVER invent facts. Every claim must be supported by the cited article IDs in "sourceIds".
+5. Return items with:
+   - "title": Headline in clear title style.
+   - "shortSummary": Maximum 2 concise, high-density sentences.
    - "detailedSummary": A comprehensive, informative paragraph providing the context, details, and impact.
-   - "importanceScore": An integer from 1 to 10 indicating global/industry significance.
-   - "relevanceScore": An integer from 1 to 10 indicating direct relevance to "$topicName".
-   - "sourceIds": JSON array of integer article IDs (e.g. [12, 15]) supporting this story.
+   - "importanceScore": Integer from 1 to 10.
+   - "relevanceScore": Integer from 1 to 10.
+   - "sourceIds": JSON array of integer article IDs supporting this item.
 
-Return a JSON array of items conforming to this schema:
+Return a JSON array of items conforming to this schema (or [] if nothing of interest today):
 [
   {
-    "title": "string",
+    "title": "Current Status: $topicName",
     "shortSummary": "string",
     "detailedSummary": "string",
-    "importanceScore": 8,
-    "relevanceScore": 9,
+    "importanceScore": 9,
+    "relevanceScore": 10,
     "sourceIds": [1, 2]
   }
 ]
@@ -293,23 +303,35 @@ Return a JSON array of items conforming to this schema:
         }
 
         val prompt = """
-You are an executive daily news briefing producer.
+You are a direct, concise executive news editor producing a daily briefing.
 
 Analyze the following curated stories across multiple topics:
 $itemsSummary
 
 TASK:
-Produce an executive daily summary highlighting the 3 to 5 most important events overall.
-Requirements:
-1. Cite the supporting article IDs for every event.
-2. Structure the text with a concise opening synthesis followed by 3 to 5 clear bullet points of the major developments.
-3. Return a JSON object with:
-   - "summaryText": The formatted daily briefing text with 3-5 bulleted highlights.
-   - "sourceIds": JSON array of all article IDs cited across these top events.
+Produce an executive daily summary covering the key developments across topics.
 
-Schema:
+STRICT FORMATTING AND TONE REQUIREMENTS:
+1. ZERO FILLER WORDS:
+   - Absolutely NO conversational openings (NO "Here is today's summary", "In summary", "Overall", "Today in news").
+   - Absolutely NO conversational filler or generic concluding remarks.
+2. SECTIONED FORMAT:
+   - Group the report under bold section titles representing the topic or domain (e.g. **Artificial Intelligence**, **Medical Research**, **Book Releases**).
+   - Under each section title, list bullet points where each item has just the headline in bold and a very short (1 concise sentence) factual description.
+   Example structure:
+   **Artificial Intelligence**
+   • **Open-Weights 70B Release**: New benchmark-topping open weights model launched with 128k context support.
+   • **Inference Efficiency Breakthrough**: Sub-quadratic attention kernel reduces serving costs by 45 percent.
+
+   **Medical Research**
+   • **Oncology Phase III Success**: Novel targeted conjugate antibody demonstrated 68 percent progression-free survival in metastatic trial.
+
+3. CITATIONS:
+   - Collect and return all referenced article IDs in "sourceIds".
+
+Return a JSON object conforming strictly to this format:
 {
-  "summaryText": "string",
+  "summaryText": "**Section Name**\n• **Headline**: Very short description.\n\n**Next Section**\n• **Headline**: Very short description.",
   "sourceIds": [1, 2, 3]
 }
 """.trimIndent()

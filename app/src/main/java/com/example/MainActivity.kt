@@ -6,7 +6,6 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
@@ -51,44 +50,52 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MainAppContent(viewModel: DigestViewModel) {
     val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
+    val isManagingTopics by viewModel.isManagingTopics.collectAsStateWithLifecycle()
 
-    // BackHandler: if not on Home screen (tab 0), pressing back returns to Home
-    BackHandler(enabled = selectedTab != 0) {
+    // BackHandler: if managing topics, return to previous screen
+    BackHandler(enabled = isManagingTopics) {
+        viewModel.setManagingTopics(false)
+    }
+
+    // BackHandler: if on Settings or Digest tab, pressing back returns to Home
+    BackHandler(enabled = !isManagingTopics && selectedTab != 0) {
         viewModel.selectTab(0)
     }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         bottomBar = {
-            NavigationBar(
-                modifier = Modifier.testTag("bottom_navigation_bar"),
-                containerColor = MaterialTheme.colorScheme.surface,
-                tonalElevation = 8.dp
-            ) {
-                Screen.items.forEachIndexed { index, screen ->
-                    val isSelected = selectedTab == index
-                    NavigationBarItem(
-                        selected = isSelected,
-                        onClick = { viewModel.selectTab(index) },
-                        icon = {
-                            Icon(
-                                imageVector = if (isSelected) screen.selectedIcon else screen.unselectedIcon,
-                                contentDescription = screen.title
-                            )
-                        },
-                        label = {
-                            Text(
-                                text = screen.title,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                            )
-                        },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = MaterialTheme.colorScheme.primary,
-                            selectedTextColor = MaterialTheme.colorScheme.primary,
-                            indicatorColor = MaterialTheme.colorScheme.primaryContainer
-                        ),
-                        modifier = Modifier.testTag("nav_tab_${screen.route}")
-                    )
+            if (!isManagingTopics) {
+                NavigationBar(
+                    modifier = Modifier.testTag("bottom_navigation_bar"),
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 8.dp
+                ) {
+                    Screen.items.forEachIndexed { index, screen ->
+                        val isSelected = selectedTab == index
+                        NavigationBarItem(
+                            selected = isSelected,
+                            onClick = { viewModel.selectTab(index) },
+                            icon = {
+                                Icon(
+                                    imageVector = if (isSelected) screen.selectedIcon else screen.unselectedIcon,
+                                    contentDescription = screen.title
+                                )
+                            },
+                            label = {
+                                Text(
+                                    text = screen.title,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                )
+                            },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.primary,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
+                                indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                            ),
+                            modifier = Modifier.testTag("nav_tab_${screen.route}")
+                        )
+                    }
                 }
             }
         }
@@ -99,16 +106,22 @@ fun MainAppContent(viewModel: DigestViewModel) {
                 .padding(innerPadding),
             color = MaterialTheme.colorScheme.background
         ) {
-            when (selectedTab) {
-                0 -> HomeScreen(
+            if (isManagingTopics) {
+                AddTopicScreen(
                     viewModel = viewModel,
-                    onNavigateToSettings = { viewModel.selectTab(3) },
-                    onNavigateToTopics = { viewModel.selectTab(2) },
-                    onNavigateToAnalytics = { viewModel.selectTab(1) }
+                    onBack = { viewModel.setManagingTopics(false) }
                 )
-                1 -> AnalyticsScreen(viewModel = viewModel)
-                2 -> AddTopicScreen(viewModel = viewModel)
-                3 -> SettingsScreen(viewModel = viewModel)
+            } else {
+                when (selectedTab) {
+                    0 -> HomeScreen(
+                        viewModel = viewModel,
+                        onNavigateToSettings = { viewModel.selectTab(2) },
+                        onNavigateToTopics = { viewModel.setManagingTopics(true) },
+                        onNavigateToAnalytics = { viewModel.selectTab(1) }
+                    )
+                    1 -> AnalyticsScreen(viewModel = viewModel)
+                    2 -> SettingsScreen(viewModel = viewModel)
+                }
             }
         }
     }
