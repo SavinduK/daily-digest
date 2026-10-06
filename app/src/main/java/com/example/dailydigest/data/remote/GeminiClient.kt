@@ -428,6 +428,80 @@ Return a JSON object conforming strictly to this format:
         return GeminiSuggestionsResult(keywords = keywords.take(10), sources = sources.take(10))
     }
 
+    /**
+     * Answers a user question about a specific topic using topic context, recent articles,
+     * and previous chat history.
+     * Returns a Pair of (fullAnswer, conciseSummary).
+     */
+    suspend fun askTopicQuestion(
+        apiKey: String,
+        model: String,
+        topicName: String,
+        articles: List<Article>,
+        previousChats: List<Pair<String, String>>,
+        userQuestion: String
+    ): Pair<String, String> {
+        val articlesListing = StringBuilder()
+        if (articles.isNotEmpty()) {
+            articlesListing.append("RECENT ARTICLES COLLECTED FOR THIS TOPIC:\n")
+            articles.take(15).forEachIndexed { idx, article ->
+                articlesListing.append("${idx + 1}. ${article.title} (${article.publisher})\n")
+                if (article.snippet.isNotBlank()) {
+                    articlesListing.append("   Snippet: ${article.snippet.take(180)}\n")
+                }
+            }
+        }
+
+        val historyListing = StringBuilder()
+        if (previousChats.isNotEmpty()) {
+            historyListing.append("RECENT CHAT HISTORY:\n")
+            previousChats.takeLast(4).forEach { (q, a) ->
+                historyListing.append("User: $q\n")
+                historyListing.append("Assistant: ${a.take(250)}\n\n")
+            }
+        }
+
+        val prompt = """
+You are a senior domain research expert on: "$topicName".
+
+$articlesListing
+
+$historyListing
+
+USER QUESTION:
+"$userQuestion"
+
+TASK:
+Provide an expert, factual, and direct answer about "$topicName".
+STRICT RULES:
+1. Ground your response in the provided topic context and domain knowledge.
+2. Direct and punchy — NO filler greetings (no "Hello!", "Certainly!", "Great question!").
+3. Use bold formatting for key names, models, books, or concepts.
+4. Output a JSON object:
+   - "answer": Complete, insightful response with clear paragraphs/bullet points.
+   - "summary": A concise 1-2 sentence executive summary of your answer (under 35 words).
+
+JSON schema:
+{
+  "answer": "string",
+  "summary": "string"
+}
+""".trimIndent()
+
+        val responseText = executeGenerateContent(apiKey, model, prompt)
+        return try {
+            val jsonObject = JSONObject(responseText)
+            val answer = jsonObject.optString("answer").trim()
+            val summary = jsonObject.optString("summary").trim()
+            Pair(
+                answer.ifBlank { responseText.trim() },
+                summary.ifBlank { answer.take(120).trim() + "..." }
+            )
+        } catch (e: Exception) {
+            Pair(responseText.trim(), userQuestion.take(70))
+        }
+    }
+
     private fun stripCodeFences(text: String): String {
         var clean = text.trim()
         if (clean.startsWith("```json")) {

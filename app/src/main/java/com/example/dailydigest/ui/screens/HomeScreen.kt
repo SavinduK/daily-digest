@@ -350,7 +350,10 @@ fun HomeScreen(
                 Surface(
                     shape = RoundedCornerShape(10.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                    modifier = Modifier.clickable { onNavigateToAnalytics() }
+                    modifier = Modifier.clickable {
+                        viewModel.openTopicHistory(topic)
+                        onNavigateToAnalytics()
+                    }
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),

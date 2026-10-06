@@ -26,6 +26,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.dailydigest.ui.navigation.Screen
 import com.example.dailydigest.ui.screens.AddTopicScreen
 import com.example.dailydigest.ui.screens.AnalyticsScreen
+import com.example.dailydigest.ui.screens.AskTopicScreen
 import com.example.dailydigest.ui.screens.HomeScreen
 import com.example.dailydigest.ui.screens.SettingsScreen
 import com.example.dailydigest.ui.viewmodel.DigestViewModel
@@ -51,14 +52,26 @@ class MainActivity : ComponentActivity() {
 fun MainAppContent(viewModel: DigestViewModel) {
     val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
     val isManagingTopics by viewModel.isManagingTopics.collectAsStateWithLifecycle()
+    val selectedTopicForHistory by viewModel.selectedTopicForHistory.collectAsStateWithLifecycle()
+    val selectedTopicForChat by viewModel.selectedTopicForChat.collectAsStateWithLifecycle()
 
     // BackHandler: if managing topics, return to previous screen
     BackHandler(enabled = isManagingTopics) {
         viewModel.setManagingTopics(false)
     }
 
-    // BackHandler: if on Settings or Digest tab, pressing back returns to Home
-    BackHandler(enabled = !isManagingTopics && selectedTab != 0) {
+    // BackHandler: if viewing a specific topic's news history, return to topic list
+    BackHandler(enabled = !isManagingTopics && selectedTopicForHistory != null) {
+        viewModel.closeTopicHistory()
+    }
+
+    // BackHandler: if in a topic chat, return to chat topic list
+    BackHandler(enabled = !isManagingTopics && selectedTopicForHistory == null && selectedTopicForChat != null) {
+        viewModel.closeTopicChat()
+    }
+
+    // BackHandler: if on Settings, Ask AI, or Digest tab, pressing back returns to Home
+    BackHandler(enabled = !isManagingTopics && selectedTopicForHistory == null && selectedTopicForChat == null && selectedTab != 0) {
         viewModel.selectTab(0)
     }
 
@@ -75,7 +88,11 @@ fun MainAppContent(viewModel: DigestViewModel) {
                         val isSelected = selectedTab == index
                         NavigationBarItem(
                             selected = isSelected,
-                            onClick = { viewModel.selectTab(index) },
+                            onClick = {
+                                viewModel.selectTab(index)
+                                if (index != 1) viewModel.closeTopicHistory()
+                                if (index != 2) viewModel.closeTopicChat()
+                            },
                             icon = {
                                 Icon(
                                     imageVector = if (isSelected) screen.selectedIcon else screen.unselectedIcon,
@@ -115,12 +132,13 @@ fun MainAppContent(viewModel: DigestViewModel) {
                 when (selectedTab) {
                     0 -> HomeScreen(
                         viewModel = viewModel,
-                        onNavigateToSettings = { viewModel.selectTab(2) },
+                        onNavigateToSettings = { viewModel.selectTab(3) },
                         onNavigateToTopics = { viewModel.setManagingTopics(true) },
                         onNavigateToAnalytics = { viewModel.selectTab(1) }
                     )
                     1 -> AnalyticsScreen(viewModel = viewModel)
-                    2 -> SettingsScreen(viewModel = viewModel)
+                    2 -> AskTopicScreen(viewModel = viewModel)
+                    3 -> SettingsScreen(viewModel = viewModel)
                 }
             }
         }

@@ -38,6 +38,13 @@ sealed class Screen(
         unselectedIcon = Icons.Outlined.AutoAwesome
     )
 
+    object AskAI : Screen(
+        route = "ask_ai",
+        title = "Ask AI",
+        selectedIcon = Icons.Filled.AutoAwesome,
+        unselectedIcon = Icons.Outlined.AutoAwesome
+    )
+
     object Settings : Screen(
         route = "settings",
         title = "Settings",
@@ -46,6 +53,6 @@ sealed class Screen(
     )
 
     companion object {
-        val items = listOf(Home, Analytics, Settings)
+        val items = listOf(Home, Analytics, AskAI, Settings)
     }
 }

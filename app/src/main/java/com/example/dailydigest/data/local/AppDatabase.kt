@@ -9,6 +9,7 @@ import com.example.dailydigest.data.local.dao.DailySummaryDao
 import com.example.dailydigest.data.local.dao.DigestItemDao
 import com.example.dailydigest.data.local.dao.KeywordDao
 import com.example.dailydigest.data.local.dao.SourceDao
+import com.example.dailydigest.data.local.dao.TopicChatDao
 import com.example.dailydigest.data.local.dao.TopicDao
 import com.example.dailydigest.data.local.entity.Article
 import com.example.dailydigest.data.local.entity.DailySummary
@@ -16,6 +17,7 @@ import com.example.dailydigest.data.local.entity.DigestItem
 import com.example.dailydigest.data.local.entity.Keyword
 import com.example.dailydigest.data.local.entity.Source
 import com.example.dailydigest.data.local.entity.Topic
+import com.example.dailydigest.data.local.entity.TopicChat
 
 @Database(
     entities = [
@@ -24,9 +26,10 @@ import com.example.dailydigest.data.local.entity.Topic
         Source::class,
         Article::class,
         DigestItem::class,
-        DailySummary::class
+        DailySummary::class,
+        TopicChat::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -36,6 +39,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun articleDao(): ArticleDao
     abstract fun digestItemDao(): DigestItemDao
     abstract fun dailySummaryDao(): DailySummaryDao
+    abstract fun topicChatDao(): TopicChatDao
 
     companion object {
         @Volatile

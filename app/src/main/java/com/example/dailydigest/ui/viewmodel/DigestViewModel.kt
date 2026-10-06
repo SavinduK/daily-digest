@@ -10,18 +10,33 @@ import com.example.dailydigest.data.local.entity.DigestItem
 import com.example.dailydigest.data.local.entity.Keyword
 import com.example.dailydigest.data.local.entity.Source
 import com.example.dailydigest.data.local.entity.Topic
+import com.example.dailydigest.data.local.entity.TopicChat
 import com.example.dailydigest.data.remote.GeminiSuggestionsResult
 import com.example.dailydigest.worker.WorkScheduler
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+data class TopicDigestSummary(
+    val topic: Topic,
+    val itemCount: Int,
+    val latestItem: DigestItem?,
+    val latestDate: String?
+)
+
+data class TopicChatSummary(
+    val topic: Topic,
+    val chatCount: Int,
+    val latestChat: TopicChat?
+)
 
 class DigestViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -65,6 +80,119 @@ class DigestViewModel(application: Application) : AndroidViewModel(application) 
 
     val digestItems: StateFlow<List<DigestItem>> = repository.getDigestItemsForDate(todayDateString)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Complete history of all digest items across all topics and dates (sorted newest first)
+    val allHistoryDigestItems: StateFlow<List<DigestItem>> = repository.getAllDigestItems()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Summaries for each tracked topic showing latest update, date, and history count
+    val topicSummaries: StateFlow<List<TopicDigestSummary>> = combine(allTopics, allHistoryDigestItems) { topics, allItems ->
+        topics.map { topic ->
+            val itemsForTopic = allItems.filter { it.topicId == topic.id }
+            TopicDigestSummary(
+                topic = topic,
+                itemCount = itemsForTopic.size,
+                latestItem = itemsForTopic.firstOrNull(),
+                latestDate = itemsForTopic.firstOrNull()?.date
+            )
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Selected topic for viewing its complete news history (sorted newest first)
+    private val _selectedTopicForHistory = MutableStateFlow<Topic?>(null)
+    val selectedTopicForHistory: StateFlow<Topic?> = _selectedTopicForHistory.asStateFlow()
+
+    fun openTopicHistory(topic: Topic) {
+        _selectedTopicForHistory.value = topic
+    }
+
+    fun closeTopicHistory() {
+        _selectedTopicForHistory.value = null
+    }
+
+    // Historical news items for the currently selected topic, sorted newest first
+    val selectedTopicHistoryItems: StateFlow<List<DigestItem>> = combine(_selectedTopicForHistory, allHistoryDigestItems) { topic, allItems ->
+        if (topic == null) {
+            emptyList()
+        } else {
+            allItems.filter { it.topicId == topic.id }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun refreshTopicHistory(topicId: Long) {
+        viewModelScope.launch {
+            _isGenerating.value = true
+            _generationStep.value = "Updating topic..."
+            try {
+                repository.generateDigestForSingleTopic(topicId) { step, progress ->
+                    _generationStep.value = step
+                    _generationProgress.value = progress
+                }
+            } catch (e: Exception) {
+                _generationError.value = e.localizedMessage ?: "Failed to refresh topic"
+            } finally {
+                _isGenerating.value = false
+            }
+        }
+    }
+
+    // Complete history of all chats across all topics
+    val allChats: StateFlow<List<TopicChat>> = repository.getAllChats()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Summaries for each topic in Ask Gemini section
+    val topicChatSummaries: StateFlow<List<TopicChatSummary>> = combine(allTopics, allChats) { topics, chats ->
+        topics.map { topic ->
+            val chatsForTopic = chats.filter { it.topicId == topic.id }
+            TopicChatSummary(
+                topic = topic,
+                chatCount = chatsForTopic.size,
+                latestChat = chatsForTopic.firstOrNull()
+            )
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Selected topic for Q&A screen
+    private val _selectedTopicForChat = MutableStateFlow<Topic?>(null)
+    val selectedTopicForChat: StateFlow<Topic?> = _selectedTopicForChat.asStateFlow()
+
+    fun openTopicChat(topic: Topic) {
+        _selectedTopicForChat.value = topic
+    }
+
+    fun closeTopicChat() {
+        _selectedTopicForChat.value = null
+    }
+
+    // Chats for the currently selected topic
+    val currentTopicChats: StateFlow<List<TopicChat>> = combine(_selectedTopicForChat, allChats) { topic, chats ->
+        if (topic == null) emptyList() else chats.filter { it.topicId == topic.id }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _isAskingQuestion = MutableStateFlow(false)
+    val isAskingQuestion: StateFlow<Boolean> = _isAskingQuestion.asStateFlow()
+
+    private val _askQuestionError = MutableStateFlow<String?>(null)
+    val askQuestionError: StateFlow<String?> = _askQuestionError.asStateFlow()
+
+    fun askGemini(topicId: Long, question: String) {
+        if (question.isBlank() || _isAskingQuestion.value) return
+        viewModelScope.launch {
+            _isAskingQuestion.value = true
+            _askQuestionError.value = null
+            val result = repository.askGeminiAboutTopic(topicId, question)
+            result.onFailure {
+                _askQuestionError.value = it.localizedMessage ?: "Failed to get response from Gemini"
+            }
+            _isAskingQuestion.value = false
+        }
+    }
+
+    fun deleteChat(chatId: Long) {
+        viewModelScope.launch {
+            repository.deleteChat(chatId)
+        }
+    }
 
     // Cited articles cache for Daily Summary
     private val _dailySummaryArticles = MutableStateFlow<List<Article>>(emptyList())

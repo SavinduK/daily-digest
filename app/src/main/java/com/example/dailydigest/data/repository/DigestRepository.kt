@@ -33,6 +33,7 @@ class DigestRepository(
     private val articleDao = database.articleDao()
     private val digestItemDao = database.digestItemDao()
     private val dailySummaryDao = database.dailySummaryDao()
+    private val topicChatDao = database.topicChatDao()
 
     val allTopics: Flow<List<Topic>> = topicDao.getAllTopics()
 
@@ -43,6 +44,62 @@ class DigestRepository(
     fun getDigestItemsForDate(date: String): Flow<List<DigestItem>> = digestItemDao.getDigestItemsForDate(date)
     fun getDigestItemsForDateAndTopic(date: String, topicId: Long): Flow<List<DigestItem>> =
         digestItemDao.getDigestItemsForDateAndTopic(date, topicId)
+
+    fun getAllDigestItemsForTopic(topicId: Long): Flow<List<DigestItem>> =
+        digestItemDao.getAllDigestItemsForTopic(topicId)
+
+    fun getAllDigestItems(): Flow<List<DigestItem>> =
+        digestItemDao.getAllDigestItems()
+
+    fun getChatsForTopic(topicId: Long): Flow<List<com.example.dailydigest.data.local.entity.TopicChat>> =
+        topicChatDao.getChatsForTopic(topicId)
+
+    fun getAllChats(): Flow<List<com.example.dailydigest.data.local.entity.TopicChat>> =
+        topicChatDao.getAllChats()
+
+    suspend fun deleteChat(id: Long) = withContext(Dispatchers.IO) {
+        topicChatDao.deleteChat(id)
+    }
+
+    suspend fun askGeminiAboutTopic(
+        topicId: Long,
+        question: String
+    ): Result<com.example.dailydigest.data.local.entity.TopicChat> = withContext(Dispatchers.IO) {
+        try {
+            val apiKey = preferencesManager.apiKeyFlow.first()
+            if (apiKey.isBlank()) {
+                return@withContext Result.failure(IllegalStateException("Gemini API key is not configured. Go to Settings to enter your key."))
+            }
+            val model = preferencesManager.selectedModelFlow.first()
+            val topic = topicDao.getTopicById(topicId) ?: return@withContext Result.failure(IllegalArgumentException("Topic not found"))
+
+            // Get articles for this topic to ground the response
+            val articles = articleDao.getRecentArticlesForTopic(topicId, 25)
+            // Get past chats for conversation context
+            val pastChats = topicChatDao.getChatsForTopic(topicId).first().take(5)
+            val pastChatPairs = pastChats.map { Pair(it.question, it.answer) }.reversed()
+
+            val (answer, summary) = geminiClient.askTopicQuestion(
+                apiKey = apiKey,
+                model = model,
+                topicName = topic.name,
+                articles = articles,
+                previousChats = pastChatPairs,
+                userQuestion = question.trim()
+            )
+
+            val chat = com.example.dailydigest.data.local.entity.TopicChat(
+                topicId = topicId,
+                question = question.trim(),
+                answer = answer,
+                summary = summary
+            )
+            val insertedId = topicChatDao.insertChat(chat)
+            Result.success(chat.copy(id = insertedId))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 
     fun getDigestItemById(id: Long): Flow<DigestItem?> = digestItemDao.getDigestItemById(id)
 
@@ -305,8 +362,8 @@ class DigestRepository(
                 articles = savedArticles
             )
 
-            // Delete existing items for this topic and replace with fresh results
-            digestItemDao.deleteDigestForTopic(topic.id)
+            // Replace only today's previous run for this topic to preserve historical archive
+            digestItemDao.deleteDigestForDateAndTopic(todayDate, topic.id)
             val newItems = geminiResults.map { res ->
                 DigestItem(
                     date = todayDate,

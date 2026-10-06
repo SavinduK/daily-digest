@@ -15,6 +15,24 @@ interface DigestItemDao {
     @Query("SELECT * FROM digest_items WHERE date = :date AND topicId = :topicId ORDER BY (importanceScore * 1.5 + relevanceScore) DESC")
     fun getDigestItemsForDateAndTopic(date: String, topicId: Long): Flow<List<DigestItem>>
 
+    /**
+     * Complete history of news/updates for a specific topic, sorted newest first.
+     */
+    @Query("SELECT * FROM digest_items WHERE topicId = :topicId ORDER BY date DESC, id DESC")
+    fun getAllDigestItemsForTopic(topicId: Long): Flow<List<DigestItem>>
+
+    /**
+     * Complete history of news/updates across all topics, sorted newest first.
+     */
+    @Query("SELECT * FROM digest_items ORDER BY date DESC, id DESC")
+    fun getAllDigestItems(): Flow<List<DigestItem>>
+
+    @Query("SELECT * FROM digest_items WHERE topicId = :topicId ORDER BY date DESC, id DESC LIMIT 1")
+    fun getLatestDigestItemForTopic(topicId: Long): Flow<DigestItem?>
+
+    @Query("SELECT COUNT(*) FROM digest_items WHERE topicId = :topicId")
+    fun getCountForTopic(topicId: Long): Flow<Int>
+
     @Query("SELECT * FROM digest_items WHERE date = :date")
     suspend fun getDigestItemsForDateSync(date: String): List<DigestItem>
 
@@ -26,6 +44,9 @@ interface DigestItemDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDigestItems(items: List<DigestItem>)
+
+    @Query("DELETE FROM digest_items WHERE date = :date AND topicId = :topicId")
+    suspend fun deleteDigestForDateAndTopic(date: String, topicId: Long)
 
     @Query("DELETE FROM digest_items WHERE date = :date")
     suspend fun deleteDigestForDate(date: String)
