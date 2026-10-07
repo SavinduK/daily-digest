@@ -33,6 +33,12 @@ interface DigestItemDao {
     @Query("SELECT COUNT(*) FROM digest_items WHERE topicId = :topicId")
     fun getCountForTopic(topicId: Long): Flow<Int>
 
+    /**
+     * Synchronous query for App Widget RemoteViewsFactory.
+     */
+    @Query("SELECT * FROM digest_items WHERE topicId = :topicId ORDER BY date DESC, id DESC LIMIT :limit")
+    fun getRecentDigestItemsForTopicBlocking(topicId: Long, limit: Int = 4): List<DigestItem>
+
     @Query("SELECT * FROM digest_items WHERE date = :date")
     suspend fun getDigestItemsForDateSync(date: String): List<DigestItem>
 

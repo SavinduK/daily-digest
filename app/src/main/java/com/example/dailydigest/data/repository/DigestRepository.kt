@@ -1,5 +1,6 @@
 package com.example.dailydigest.data.repository
 
+import android.content.Context
 import com.example.dailydigest.data.local.AppDatabase
 import com.example.dailydigest.data.local.entity.Article
 import com.example.dailydigest.data.local.entity.DailySummary
@@ -12,6 +13,7 @@ import com.example.dailydigest.data.remote.GeminiClient
 import com.example.dailydigest.data.remote.GeminiDigestItemResult
 import com.example.dailydigest.data.remote.GeminiSuggestionsResult
 import com.example.dailydigest.data.remote.RssFetcher
+import com.example.dailydigest.widget.TopicNewsWidgetProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -24,7 +26,8 @@ class DigestRepository(
     private val database: AppDatabase,
     private val preferencesManager: PreferencesManager,
     private val rssFetcher: RssFetcher = RssFetcher(),
-    private val geminiClient: GeminiClient = GeminiClient()
+    private val geminiClient: GeminiClient = GeminiClient(),
+    private val context: Context? = null
 ) {
 
     private val topicDao = database.topicDao()
@@ -315,6 +318,9 @@ class DigestRepository(
             dailySummaryDao.insertDailySummary(dailySummary)
             preferencesManager.setLastDigestDate(todayDate)
 
+            // Notify home screen widget to refresh its content
+            context?.let { TopicNewsWidgetProvider.updateAllWidgets(it) }
+
             progressCallback?.invoke("Daily digest ready!", 1.0f)
             Result.success(Unit)
         } catch (e: Exception) {
@@ -380,6 +386,9 @@ class DigestRepository(
             if (newItems.isNotEmpty()) {
                 digestItemDao.insertDigestItems(newItems)
             }
+
+            // Notify home screen widget to refresh its content
+            context?.let { TopicNewsWidgetProvider.updateAllWidgets(it) }
 
             progressCallback?.invoke("Status updated!", 1.0f)
             Result.success(newItems.size)

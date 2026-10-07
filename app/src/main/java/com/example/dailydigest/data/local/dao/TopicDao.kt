@@ -17,6 +17,9 @@ interface TopicDao {
     @Query("SELECT * FROM topics ORDER BY createdAt ASC")
     suspend fun getAllTopicsSync(): List<Topic>
 
+    @Query("SELECT * FROM topics ORDER BY createdAt ASC")
+    fun getAllTopicsBlocking(): List<Topic>
+
     @Query("SELECT * FROM topics WHERE id = :id LIMIT 1")
     suspend fun getTopicById(id: Long): Topic?
 

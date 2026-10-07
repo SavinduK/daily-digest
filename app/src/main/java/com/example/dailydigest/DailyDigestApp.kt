@@ -29,7 +29,7 @@ class DailyDigestApp : Application() {
 
         database = AppDatabase.getInstance(this)
         preferencesManager = PreferencesManager(this)
-        repository = DigestRepository(database, preferencesManager)
+        repository = DigestRepository(database, preferencesManager, context = this)
 
         WorkScheduler.initNotificationChannel(this)
 
