@@ -2,4 +2,6 @@
     <string name="app_name">Daily Digest</string>
     <string name="widget_name">Topic News Digest</string>
     <string name="widget_description">Shows latest news on each tracked topic in bullet form titles</string>
+    <string name="widget_ticker_name">Daily Digest 4x1 Ticker</string>
+    <string name="widget_ticker_description">Single-line event summary ticker that cycles events every 5 minutes</string>
 </resources>

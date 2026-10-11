@@ -29,7 +29,7 @@ import com.example.dailydigest.data.local.entity.TopicChat
         DailySummary::class,
         TopicChat::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

@@ -40,6 +40,21 @@ data class GeminiSuggestionsResult(
     val sources: List<SuggestedSource>
 )
 
+data class TopicKnowledgeLandscape(
+    val statusHeadline: String,
+    val summary: String,
+    val detailedLandscape: String,
+    val keyDevelopments: List<String>
+)
+
+data class GeminiDiscoveredArticle(
+    val title: String,
+    val publisher: String,
+    val url: String,
+    val snippet: String,
+    val publishedAt: Long = System.currentTimeMillis()
+)
+
 class GeminiClient(
     private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(60, TimeUnit.SECONDS)
@@ -499,6 +514,137 @@ JSON schema:
             )
         } catch (e: Exception) {
             Pair(responseText.trim(), userQuestion.take(70))
+        }
+    }
+
+    /**
+     * Checks the model's internal knowledge first to synthesize an insightful landscape briefing,
+     * current status, and known developments for the topic.
+     */
+    suspend fun generateTopicLandscapeFromKnowledge(
+        apiKey: String,
+        model: String,
+        topicName: String
+    ): TopicKnowledgeLandscape {
+        val prompt = """
+You are a senior domain research expert.
+First, check your internal knowledge to make a comprehensive, factual overview and current landscape summary for: "$topicName".
+
+STRICT JSON OUTPUT FORMAT:
+{
+  "statusHeadline": "Current Status: concise headline on state of $topicName",
+  "summary": "2-3 sentences summarizing the foundational landscape, latest major releases/events, and active projects.",
+  "detailedLandscape": "Detailed paragraph exploring recent context, background, key figures/characters/editions, and current status.",
+  "keyDevelopments": [
+    "Known development or milestone 1",
+    "Known development or milestone 2",
+    "Known development or milestone 3"
+  ]
+}
+""".trimIndent()
+
+        val responseText = executeGenerateContent(apiKey, model, prompt)
+        return try {
+            val json = JSONObject(responseText)
+            val statusHeadline = json.optString("statusHeadline").ifBlank { "Current Status: $topicName Overview" }
+            val summary = json.optString("summary").ifBlank { "Overview of active developments and background for $topicName." }
+            val detailed = json.optString("detailedLandscape").ifBlank { summary }
+            val devs = mutableListOf<String>()
+            val arr = json.optJSONArray("keyDevelopments")
+            if (arr != null) {
+                for (i in 0 until arr.length()) {
+                    val d = arr.optString(i).trim()
+                    if (d.isNotBlank()) devs.add(d)
+                }
+            }
+            TopicKnowledgeLandscape(
+                statusHeadline = statusHeadline,
+                summary = summary,
+                detailedLandscape = detailed,
+                keyDevelopments = devs
+            )
+        } catch (e: Exception) {
+            TopicKnowledgeLandscape(
+                statusHeadline = "Current Status: $topicName",
+                summary = "Active background and current landscape overview for $topicName.",
+                detailedLandscape = "Research summary synthesized from domain knowledge.",
+                keyDevelopments = listOf("Latest updates tracked in topic landscape")
+            )
+        }
+    }
+
+    /**
+     * If RSS feeds return no data or sparse updates (e.g. niche book series, author announcements, emulators),
+     * this queries Google web knowledge through Gemini to discover recent announcements and events.
+     */
+    suspend fun searchAndDiscoverTopicArticles(
+        apiKey: String,
+        model: String,
+        topicName: String,
+        keywords: List<String>
+    ): List<GeminiDiscoveredArticle> {
+        val kwList = if (keywords.isNotEmpty()) keywords.joinToString(", ") else topicName
+        val prompt = """
+You are a web research assistant.
+Search your knowledge and current web data for recent news, announcements, updates, book releases, rumors, author interviews, or community updates regarding:
+"$topicName"
+Keywords to assist: $kwList
+
+Find 3 to 6 distinct, recent news events or publication announcements.
+For each event, provide:
+- "title": Clear, descriptive news headline (e.g., "Cassandra Clare announces release window for The Wicked Powers")
+- "publisher": Credible publisher name, blog, literary site, official newsletter, or fandom community
+- "url": Official website, publisher domain, or standard search URL
+- "snippet": 2-3 sentences explaining the factual event or update details
+
+Return a JSON array conforming strictly to:
+[
+  {
+    "title": "string",
+    "publisher": "string",
+    "url": "string",
+    "snippet": "string"
+  }
+]
+""".trimIndent()
+
+        val responseText = executeGenerateContent(apiKey, model, prompt)
+        val articles = mutableListOf<GeminiDiscoveredArticle>()
+        try {
+            val jsonArray = JSONArray(responseText)
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.optJSONObject(i) ?: continue
+                val title = obj.optString("title").trim()
+                val publisher = obj.optString("publisher").ifBlank { "Domain Intelligence" }.trim()
+                val url = obj.optString("url").ifBlank { "https://www.google.com/search?q=" + java.net.URLEncoder.encode(title, "UTF-8") }
+                val snippet = obj.optString("snippet").trim()
+                if (title.isNotBlank()) {
+                    articles.add(
+                        GeminiDiscoveredArticle(
+                            title = title,
+                            publisher = publisher,
+                            url = url,
+                            snippet = snippet.ifBlank { title }
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse discovered articles JSON: $responseText", e)
+        }
+        return articles
+    }
+
+    /**
+     * Summarises an event headline or summary into a punchy single line under 70 characters for the 4x1 widget.
+     */
+    fun summarizeEventIntoSingleLine(title: String, summary: String): String {
+        val cleanTitle = title.removePrefix("Current Status:").trim()
+        return if (cleanTitle.length <= 65) {
+            cleanTitle
+        } else {
+            val firstSentence = summary.split(".").firstOrNull()?.trim() ?: cleanTitle
+            if (firstSentence.length <= 65) firstSentence else firstSentence.take(62).trim() + "..."
         }
     }
 

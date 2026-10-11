@@ -47,7 +47,7 @@ class DigestViewModel(application: Application) : AndroidViewModel(application) 
     val todayDateString: String = repository.getTodayDateString()
 
     val formattedTodayDate: String = run {
-        val sdf = SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.US)
+        val sdf = SimpleDateFormat("MMMM d", Locale.US)
         sdf.format(Date())
     }
 
@@ -97,6 +97,45 @@ class DigestViewModel(application: Application) : AndroidViewModel(application) 
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // All distinct group names in the database
+    val allGroupNames: StateFlow<List<String>> = repository.allGroupNames
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Currently selected group filter on Curated Digest screen (null means All Topics)
+    private val _selectedGroupFilter = MutableStateFlow<String?>(null)
+    val selectedGroupFilter: StateFlow<String?> = _selectedGroupFilter.asStateFlow()
+
+    fun selectGroupFilter(group: String?) {
+        _selectedGroupFilter.value = group
+    }
+
+    // Filtered topic summaries based on selectedGroupFilter
+    val filteredTopicSummaries: StateFlow<List<TopicDigestSummary>> = combine(topicSummaries, _selectedGroupFilter) { summaries, filter ->
+        if (filter.isNullOrBlank()) {
+            summaries
+        } else {
+            summaries.filter { it.topic.groupName.equals(filter, ignoreCase = true) }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun assignTopicToGroup(topicId: Long, groupName: String?) {
+        viewModelScope.launch {
+            repository.updateTopicGroup(topicId, groupName)
+        }
+    }
+
+    fun removeTopicFromGroup(topicId: Long) {
+        viewModelScope.launch {
+            repository.updateTopicGroup(topicId, null)
+        }
+    }
+
+    fun setTopicFrequency(topicId: Long, frequency: String) {
+        viewModelScope.launch {
+            repository.updateTopicFrequency(topicId, frequency)
+        }
+    }
 
     // Selected topic for viewing its complete news history (sorted newest first)
     private val _selectedTopicForHistory = MutableStateFlow<Topic?>(null)
@@ -248,6 +287,8 @@ class DigestViewModel(application: Application) : AndroidViewModel(application) 
     // Add / Edit Topic form state
     val editingTopicId = MutableStateFlow<Long?>(null)
     val topicNameInput = MutableStateFlow("")
+    val topicGroupInput = MutableStateFlow("")
+    val topicFrequencyInput = MutableStateFlow("DAILY")
     val topicKeywords = MutableStateFlow<List<String>>(emptyList())
     val topicSources = MutableStateFlow<List<Pair<String, String>>>(emptyList())
 
@@ -323,6 +364,8 @@ class DigestViewModel(application: Application) : AndroidViewModel(application) 
     fun startNewTopic() {
         editingTopicId.value = null
         topicNameInput.value = ""
+        topicGroupInput.value = ""
+        topicFrequencyInput.value = "DAILY"
         topicKeywords.value = emptyList()
         topicSources.value = emptyList()
         aiSuggestions.value = null
@@ -331,6 +374,8 @@ class DigestViewModel(application: Application) : AndroidViewModel(application) 
     fun startEditTopic(topic: Topic) {
         editingTopicId.value = topic.id
         topicNameInput.value = topic.name
+        topicGroupInput.value = topic.groupName ?: ""
+        topicFrequencyInput.value = topic.updateFrequency
         aiSuggestions.value = null
 
         viewModelScope.launch {
@@ -373,18 +418,24 @@ class DigestViewModel(application: Application) : AndroidViewModel(application) 
 
         viewModelScope.launch {
             val id = editingTopicId.value
+            val group = topicGroupInput.value.trim().ifBlank { null }
+            val freq = topicFrequencyInput.value
             val savedTopicId = if (id == null) {
                 repository.insertTopicWithDetails(
                     name = name,
                     keywords = topicKeywords.value,
-                    sources = topicSources.value
+                    sources = topicSources.value,
+                    groupName = group,
+                    updateFrequency = freq
                 )
             } else {
                 repository.updateTopicWithDetails(
                     topicId = id,
                     name = name,
                     keywords = topicKeywords.value,
-                    sources = topicSources.value
+                    sources = topicSources.value,
+                    groupName = group,
+                    updateFrequency = freq
                 )
                 id
             }

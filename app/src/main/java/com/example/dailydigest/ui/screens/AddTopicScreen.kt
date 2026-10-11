@@ -3,6 +3,7 @@ package com.example.dailydigest.ui.screens
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,6 +38,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -77,6 +79,9 @@ fun AddTopicScreen(
     val topics by viewModel.allTopics.collectAsStateWithLifecycle()
     val editingTopicId by viewModel.editingTopicId.collectAsStateWithLifecycle()
     val topicName by viewModel.topicNameInput.collectAsStateWithLifecycle()
+    val topicGroup by viewModel.topicGroupInput.collectAsStateWithLifecycle()
+    val topicFrequency by viewModel.topicFrequencyInput.collectAsStateWithLifecycle()
+    val allExistingGroups by viewModel.allGroupNames.collectAsStateWithLifecycle()
     val keywords by viewModel.topicKeywords.collectAsStateWithLifecycle()
     val sources by viewModel.topicSources.collectAsStateWithLifecycle()
     val isSuggestingAI by viewModel.isSuggestingAI.collectAsStateWithLifecycle()
@@ -167,7 +172,7 @@ fun AddTopicScreen(
                     value = topicName,
                     onValueChange = { viewModel.topicNameInput.value = it },
                     label = { Text("Topic Name") },
-                    placeholder = { Text("e.g. Artificial Intelligence, Cancer Research") },
+                    placeholder = { Text("e.g. Cassandra Clare Books, Console Emulators") },
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("topic_name_input"),
@@ -175,7 +180,85 @@ fun AddTopicScreen(
                     shape = RoundedCornerShape(12.dp)
                 )
 
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Topic Group Input & Suggestions
+                OutlinedTextField(
+                    value = topicGroup,
+                    onValueChange = { viewModel.topicGroupInput.value = it },
+                    label = { Text("Topic Group (e.g. Story Books)") },
+                    placeholder = { Text("Assign to a group or leave empty") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("topic_group_input"),
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                // Quick Group Suggestions
+                val suggestedGroups = remember(allExistingGroups) {
+                    val defaults = listOf("Story Books", "Tech & AI", "Research", "Gaming")
+                    (defaults + allExistingGroups).distinct()
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(top = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    suggestedGroups.forEach { grp ->
+                        FilterChip(
+                            selected = topicGroup.equals(grp, ignoreCase = true),
+                            onClick = {
+                                viewModel.topicGroupInput.value = if (topicGroup.equals(grp, ignoreCase = true)) "" else grp
+                            },
+                            label = { Text(grp, style = MaterialTheme.typography.labelSmall) }
+                        )
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(12.dp))
+
+                // Custom Update Timer Cadence
+                Text(
+                    text = "Update Timer Cadence",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "Frequency for automated digests (manual refresh always available)",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                val frequencyOptions = listOf(
+                    "DAILY" to "Daily",
+                    "WEEKLY" to "Once a week",
+                    "BIWEEKLY" to "Once 2 weeks",
+                    "MONTHLY" to "Once a month"
+                )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    frequencyOptions.forEach { (freqKey, label) ->
+                        FilterChip(
+                            selected = topicFrequency.equals(freqKey, ignoreCase = true),
+                            onClick = { viewModel.topicFrequencyInput.value = freqKey },
+                            label = { Text(label, style = MaterialTheme.typography.labelSmall) }
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
 
                 // "Suggest with AI" Button
                 OutlinedButton(
@@ -594,11 +677,40 @@ fun AddTopicScreen(
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold
                         )
-                        Text(
-                            text = "Auto-collects via RSS & Google News at 6:00 AM",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer
+                            ) {
+                                Text(
+                                    text = topic.groupName?.ifBlank { null } ?: "Ungrouped",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.secondaryContainer
+                            ) {
+                                val cadenceLabel = when (topic.updateFrequency.uppercase()) {
+                                    "WEEKLY" -> "Weekly"
+                                    "BIWEEKLY" -> "Once 2 wks"
+                                    "MONTHLY" -> "Monthly"
+                                    else -> "Daily"
+                                }
+                                Text(
+                                    text = cadenceLabel,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
                     }
 
                     Row {

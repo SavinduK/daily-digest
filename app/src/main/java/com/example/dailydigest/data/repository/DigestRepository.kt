@@ -13,6 +13,7 @@ import com.example.dailydigest.data.remote.GeminiClient
 import com.example.dailydigest.data.remote.GeminiDigestItemResult
 import com.example.dailydigest.data.remote.GeminiSuggestionsResult
 import com.example.dailydigest.data.remote.RssFetcher
+import com.example.dailydigest.widget.EventTickerWidgetProvider
 import com.example.dailydigest.widget.TopicNewsWidgetProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -39,6 +40,7 @@ class DigestRepository(
     private val topicChatDao = database.topicChatDao()
 
     val allTopics: Flow<List<Topic>> = topicDao.getAllTopics()
+    val allGroupNames: Flow<List<String>> = topicDao.getAllGroupNames()
 
     fun getKeywordsForTopic(topicId: Long): Flow<List<Keyword>> = keywordDao.getKeywordsForTopic(topicId)
     fun getSourcesForTopic(topicId: Long): Flow<List<Source>> = sourceDao.getSourcesForTopic(topicId)
@@ -110,21 +112,44 @@ class DigestRepository(
         if (ids.isEmpty()) emptyList() else articleDao.getArticlesByIds(ids)
     }
 
-    suspend fun getTopicById(id: Long): Topic? = withContext(Dispatchers.IO) {
-        topicDao.getTopicById(id)
-    }
-
     fun getTodayDateString(): String {
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         return sdf.format(Date())
     }
 
+    fun isTopicDueForUpdate(topic: Topic, now: Long = System.currentTimeMillis()): Boolean {
+        if (topic.lastUpdatedAt <= 0L) return true
+        val diffMs = now - topic.lastUpdatedAt
+        return when (topic.updateFrequency.uppercase()) {
+            "WEEKLY" -> diffMs >= 7 * 24 * 3600 * 1000L
+            "BIWEEKLY" -> diffMs >= 14 * 24 * 3600 * 1000L
+            "MONTHLY" -> diffMs >= 30 * 24 * 3600 * 1000L
+            else -> diffMs >= 12 * 3600 * 1000L // DAILY
+        }
+    }
+
+    suspend fun updateTopicGroup(topicId: Long, groupName: String?) = withContext(Dispatchers.IO) {
+        topicDao.updateTopicGroup(topicId, groupName?.trim()?.ifBlank { null })
+    }
+
+    suspend fun updateTopicFrequency(topicId: Long, frequency: String) = withContext(Dispatchers.IO) {
+        topicDao.updateTopicFrequency(topicId, frequency)
+    }
+
     suspend fun insertTopicWithDetails(
         name: String,
         keywords: List<String>,
-        sources: List<Pair<String, String>>
+        sources: List<Pair<String, String>>,
+        groupName: String? = null,
+        updateFrequency: String = "DAILY"
     ): Long = withContext(Dispatchers.IO) {
-        val topicId = topicDao.insertTopic(Topic(name = name.trim()))
+        val topicId = topicDao.insertTopic(
+            Topic(
+                name = name.trim(),
+                groupName = groupName?.trim()?.ifBlank { null },
+                updateFrequency = updateFrequency
+            )
+        )
         val keywordEntities = keywords.filter { it.isNotBlank() }.map {
             Keyword(topicId = topicId, term = it.trim())
         }
@@ -144,9 +169,24 @@ class DigestRepository(
         topicId: Long,
         name: String,
         keywords: List<String>,
-        sources: List<Pair<String, String>>
+        sources: List<Pair<String, String>>,
+        groupName: String? = null,
+        updateFrequency: String = "DAILY"
     ) = withContext(Dispatchers.IO) {
-        topicDao.updateTopic(Topic(id = topicId, name = name.trim()))
+        val existing = topicDao.getTopicById(topicId)
+        val effectiveGroup = groupName?.trim()?.ifBlank { null } ?: existing?.groupName
+        val effectiveFreq = if (updateFrequency.isNotBlank()) updateFrequency else existing?.updateFrequency ?: "DAILY"
+
+        topicDao.updateTopic(
+            Topic(
+                id = topicId,
+                name = name.trim(),
+                groupName = effectiveGroup,
+                updateFrequency = effectiveFreq,
+                lastUpdatedAt = existing?.lastUpdatedAt ?: 0L,
+                createdAt = existing?.createdAt ?: System.currentTimeMillis()
+            )
+        )
         keywordDao.deleteKeywordsForTopic(topicId)
         val keywordEntities = keywords.filter { it.isNotBlank() }.map {
             Keyword(topicId = topicId, term = it.trim())
@@ -192,7 +232,9 @@ class DigestRepository(
                 sources = listOf(
                     Pair("MIT Tech Review", "https://www.technologyreview.com/feed/"),
                     Pair("Ars Technica AI", "https://feeds.arstechnica.com/arstechnica/index")
-                )
+                ),
+                groupName = "Tech & AI",
+                updateFrequency = "DAILY"
             )
 
             insertTopicWithDetails(
@@ -201,27 +243,60 @@ class DigestRepository(
                 sources = listOf(
                     Pair("ScienceDaily Health", "https://www.sciencedaily.com/rss/health_medicine.xml"),
                     Pair("Medical Xpress", "https://medicalxpress.com/rss-feed/")
-                )
+                ),
+                groupName = "Research",
+                updateFrequency = "DAILY"
             )
 
             insertTopicWithDetails(
-                name = "New story books",
-                keywords = listOf("Bestseller Fiction", "New Book Releases", "Literary Fiction", "Fantasy Books", "Sci-Fi Novels", "Booker Prize"),
+                name = "cassandra claire books",
+                keywords = listOf("Cassandra Clare", "Shadowhunters", "The Mortal Instruments", "The Wicked Powers", "Sword Catcher"),
                 sources = listOf(
-                    Pair("NPR Books", "https://feeds.npr.org/1032/rss.xml"),
                     Pair("Publishers Weekly", "https://www.publishersweekly.com/pw/feeds/rss/index.html")
-                )
+                ),
+                groupName = "Story Books",
+                updateFrequency = "WEEKLY"
+            )
+
+            insertTopicWithDetails(
+                name = "diary of a wimpy kid books",
+                keywords = listOf("Diary of a Wimpy Kid", "Jeff Kinney", "Wimpy Kid Book", "Greg Heffley", "Children Fiction"),
+                sources = listOf(
+                    Pair("Publishers Weekly", "https://www.publishersweekly.com/pw/feeds/rss/index.html")
+                ),
+                groupName = "Story Books",
+                updateFrequency = "WEEKLY"
+            )
+
+            insertTopicWithDetails(
+                name = "console emulators",
+                keywords = listOf("Video Game Emulator", "RPCS3", "PCSX2", "Dolphin Emulator", "Ryujinx", "RetroArch"),
+                sources = listOf(
+                    Pair("Reddit Emulation", "https://www.reddit.com/r/emulation/.rss")
+                ),
+                groupName = "Gaming",
+                updateFrequency = "WEEKLY"
+            )
+
+            insertTopicWithDetails(
+                name = "local llms and agents",
+                keywords = listOf("Ollama", "Llama.cpp", "Local LLM", "Hugging Face", "vLLM", "AI Agents"),
+                sources = listOf(
+                    Pair("Reddit LocalLlama", "https://www.reddit.com/r/LocalLLaMA/.rss")
+                ),
+                groupName = "Tech & AI",
+                updateFrequency = "DAILY"
             )
         }
     }
 
     /**
      * Primary digest generation workflow:
-     * 1. Fetches feeds per topic
-     * 2. Inserts collected articles to Room
-     * 3. Calls Gemini for topic summaries and scores
-     * 4. Calls Gemini for overall daily summary
-     * 5. Saves DigestItems and DailySummary
+     * Respects each topic's custom update timer (Daily, Weekly, Bi-weekly, Monthly).
+     * Follows the 3-step retrieval pipeline:
+     * 1. Check internal knowledge first to build foundational overview.
+     * 2. Fetch multiple RSS sources (Google News, Bing, Reddit, custom feeds).
+     * 3. If no/sparse RSS data, execute Google Search web discovery via Gemini.
      */
     suspend fun generateDailyDigest(
         progressCallback: ((step: String, progress: Float) -> Unit)? = null
@@ -232,33 +307,75 @@ class DigestRepository(
                 return@withContext Result.failure(IllegalStateException("Gemini API key is not configured. Go to Settings to enter your key."))
             }
             val model = preferencesManager.selectedModelFlow.first()
-            val topics = topicDao.getAllTopicsSync()
-            if (topics.isEmpty()) {
+            val allTopicsList = topicDao.getAllTopicsSync()
+            if (allTopicsList.isEmpty()) {
                 return@withContext Result.failure(IllegalStateException("No topics configured. Please add topics to generate a digest."))
             }
 
+            // Filter to topics that are due for update based on their custom timer (or topics with 0 previous updates)
+            val dueTopics = allTopicsList.filter { isTopicDueForUpdate(it) }.ifEmpty { allTopicsList }
             val todayDate = getTodayDateString()
-            progressCallback?.invoke("Collecting news articles...", 0.1f)
+            progressCallback?.invoke("Collecting news across ${dueTopics.size} active topics...", 0.1f)
 
-            // Step 1 & 2: Fetch articles per topic and persist
             val topicArticlesMap = mutableMapOf<Topic, List<Article>>()
-            for ((index, topic) in topics.withIndex()) {
+            for ((index, topic) in dueTopics.withIndex()) {
                 val keywords = keywordDao.getKeywordsForTopicSync(topic.id)
                 val sources = sourceDao.getSourcesForTopicSync(topic.id)
 
-                progressCallback?.invoke("Fetching feeds for ${topic.name}...", 0.1f + 0.3f * (index / topics.size.toFloat()))
-                val fetched = rssFetcher.fetchArticlesForTopic(topic, keywords, sources)
+                progressCallback?.invoke("Checking sources for ${topic.name}...", 0.1f + 0.3f * (index / dueTopics.size.toFloat()))
 
-                // Save articles and reload to get real auto-generated IDs
+                // Step 1: Internal knowledge check
+                val internalLandscape = geminiClient.generateTopicLandscapeFromKnowledge(apiKey, model, topic.name)
+
+                // Step 2: Multiple RSS feeds
+                val fetched = rssFetcher.fetchArticlesForTopic(topic, keywords, sources)
                 val savedArticles = mutableListOf<Article>()
                 fetched.forEach { article ->
                     val id = articleDao.insertArticle(article)
                     savedArticles.add(article.copy(id = id))
                 }
+
+                // Step 3: Google search discovery if RSS is empty or sparse
+                if (savedArticles.size < 2) {
+                    val discovered = geminiClient.searchAndDiscoverTopicArticles(
+                        apiKey = apiKey,
+                        model = model,
+                        topicName = topic.name,
+                        keywords = keywords.map { it.term }
+                    )
+                    discovered.forEach { disc ->
+                        val art = Article(
+                            topicId = topic.id,
+                            title = disc.title,
+                            url = disc.url,
+                            publisher = disc.publisher,
+                            publishedAt = disc.publishedAt,
+                            snippet = disc.snippet,
+                            hash = disc.title.hashCode().toString()
+                        )
+                        val id = articleDao.insertArticle(art)
+                        savedArticles.add(art.copy(id = id))
+                    }
+                }
+
+                if (savedArticles.isEmpty()) {
+                    val fallbackArticle = Article(
+                        topicId = topic.id,
+                        title = internalLandscape.statusHeadline,
+                        url = "https://www.google.com/search?q=" + java.net.URLEncoder.encode(topic.name, "UTF-8"),
+                        publisher = "Domain Intelligence",
+                        publishedAt = System.currentTimeMillis(),
+                        snippet = internalLandscape.summary,
+                        hash = topic.name.hashCode().toString()
+                    )
+                    val id = articleDao.insertArticle(fallbackArticle)
+                    savedArticles.add(fallbackArticle.copy(id = id))
+                }
+
                 topicArticlesMap[topic] = savedArticles
             }
 
-            // Step 3: Call Gemini for each topic
+            // Synthesize with Gemini
             val allGeneratedItems = mutableListOf<DigestItem>()
             val itemsForDailySummary = mutableListOf<Pair<GeminiDigestItemResult, Article?>>()
 
@@ -266,9 +383,7 @@ class DigestRepository(
                 val topic = entry.key
                 val articles = entry.value
 
-                if (articles.isEmpty()) continue
-
-                progressCallback?.invoke("Analyzing and ranking ${topic.name}...", 0.4f + 0.4f * (index / topics.size.toFloat()))
+                progressCallback?.invoke("Analyzing and ranking ${topic.name}...", 0.45f + 0.35f * (index / topicArticlesMap.size.toFloat()))
                 try {
                     val geminiResults = geminiClient.generateTopicDigest(
                         apiKey = apiKey,
@@ -293,21 +408,23 @@ class DigestRepository(
                         val firstArticle = articles.find { it.id in res.sourceIds } ?: articles.firstOrNull()
                         itemsForDailySummary.add(Pair(res, firstArticle))
                     }
+
+                    topicDao.updateTopicLastUpdated(topic.id, System.currentTimeMillis())
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
             }
 
             if (allGeneratedItems.isEmpty()) {
-                return@withContext Result.failure(Exception("Could not generate digest items. Please check network or feed sources."))
+                return@withContext Result.failure(Exception("Could not generate digest items. Please check network connection."))
             }
 
             // Save digest items
             digestItemDao.deleteDigestForDate(todayDate)
             digestItemDao.insertDigestItems(allGeneratedItems)
 
-            // Step 4: Overall daily summary
-            progressCallback?.invoke("Synthesizing executive briefing...", 0.85f)
+            // Executive briefing summary
+            progressCallback?.invoke("Synthesizing executive briefing...", 0.88f)
             val dailySummaryResult = geminiClient.generateDailySummary(apiKey, model, itemsForDailySummary)
 
             val dailySummary = DailySummary(
@@ -318,8 +435,11 @@ class DigestRepository(
             dailySummaryDao.insertDailySummary(dailySummary)
             preferencesManager.setLastDigestDate(todayDate)
 
-            // Notify home screen widget to refresh its content
-            context?.let { TopicNewsWidgetProvider.updateAllWidgets(it) }
+            // Notify both home screen widgets (4x3 and 4x1 ticker)
+            context?.let {
+                TopicNewsWidgetProvider.updateAllWidgets(it)
+                EventTickerWidgetProvider.updateAllWidgets(it)
+            }
 
             progressCallback?.invoke("Daily digest ready!", 1.0f)
             Result.success(Unit)
@@ -329,8 +449,9 @@ class DigestRepository(
     }
 
     /**
-     * Generates or refreshes digest and current status for a single topic.
-     * Evaluates current area status as the first entry, or returns 0 if nothing of interest today.
+     * Generates or refreshes digest and current status for a single topic on demand.
+     * Guaranteed to return rich updates by combining internal knowledge, multi-source RSS,
+     * and Google search discovery.
      */
     suspend fun generateDigestForSingleTopic(
         topicId: Long,
@@ -345,7 +466,12 @@ class DigestRepository(
             val topic = topicDao.getTopicById(topicId) ?: return@withContext Result.failure(IllegalArgumentException("Topic not found"))
             val todayDate = getTodayDateString()
 
-            progressCallback?.invoke("Fetching feeds for ${topic.name}...", 0.2f)
+            // Step 1: Check internal knowledge first to build baseline landscape
+            progressCallback?.invoke("Checking AI domain knowledge for ${topic.name}...", 0.15f)
+            val internalLandscape = geminiClient.generateTopicLandscapeFromKnowledge(apiKey, model, topic.name)
+
+            // Step 2: Fetch articles from multiple RSS sources
+            progressCallback?.invoke("Scanning multiple news feeds for ${topic.name}...", 0.35f)
             val keywords = keywordDao.getKeywordsForTopicSync(topic.id)
             val sources = sourceDao.getSourcesForTopicSync(topic.id)
             val fetched = rssFetcher.fetchArticlesForTopic(topic, keywords, sources)
@@ -356,17 +482,69 @@ class DigestRepository(
                 savedArticles.add(article.copy(id = id))
             }
 
-            if (savedArticles.isEmpty()) {
-                return@withContext Result.success(0)
+            // Step 3: If no or sparse data on RSS feeds, search Google via Gemini web discovery
+            if (savedArticles.size < 2) {
+                progressCallback?.invoke("Searching Google & web for latest ${topic.name} updates...", 0.55f)
+                val discovered = geminiClient.searchAndDiscoverTopicArticles(
+                    apiKey = apiKey,
+                    model = model,
+                    topicName = topic.name,
+                    keywords = keywords.map { it.term }
+                )
+                discovered.forEach { disc ->
+                    val art = Article(
+                        topicId = topic.id,
+                        title = disc.title,
+                        url = disc.url,
+                        publisher = disc.publisher,
+                        publishedAt = disc.publishedAt,
+                        snippet = disc.snippet,
+                        hash = disc.title.hashCode().toString()
+                    )
+                    val id = articleDao.insertArticle(art)
+                    savedArticles.add(art.copy(id = id))
+                }
             }
 
-            progressCallback?.invoke("Synthesizing current status for ${topic.name}...", 0.6f)
+            // Fallback: If still empty, use internal knowledge landscape as foundational article
+            if (savedArticles.isEmpty()) {
+                val fallbackArticle = Article(
+                    topicId = topic.id,
+                    title = internalLandscape.statusHeadline,
+                    url = "https://www.google.com/search?q=" + java.net.URLEncoder.encode(topic.name, "UTF-8"),
+                    publisher = "Domain Intelligence Briefing",
+                    publishedAt = System.currentTimeMillis(),
+                    snippet = internalLandscape.summary,
+                    hash = topic.name.hashCode().toString()
+                )
+                val id = articleDao.insertArticle(fallbackArticle)
+                savedArticles.add(fallbackArticle.copy(id = id))
+            }
+
+            // Synthesize the digest items
+            progressCallback?.invoke("Synthesizing current status and key events...", 0.75f)
             val geminiResults = geminiClient.generateTopicDigest(
                 apiKey = apiKey,
                 model = model,
                 topicName = topic.name,
                 articles = savedArticles
-            )
+            ).toMutableList()
+
+            // Prepend internal landscape as top item if not already present
+            val hasStatus = geminiResults.any { it.title.startsWith("Current Status", ignoreCase = true) }
+            if (!hasStatus && internalLandscape.statusHeadline.isNotBlank()) {
+                geminiResults.add(
+                    0,
+                    GeminiDigestItemResult(
+                        title = internalLandscape.statusHeadline,
+                        shortSummary = internalLandscape.summary,
+                        detailedSummary = internalLandscape.detailedLandscape,
+                        importanceScore = 10,
+                        relevanceScore = 10,
+                        sourceIds = listOf(savedArticles.first().id)
+                    )
+                )
+            }
 
             // Replace only today's previous run for this topic to preserve historical archive
             digestItemDao.deleteDigestForDateAndTopic(todayDate, topic.id)
@@ -387,8 +565,14 @@ class DigestRepository(
                 digestItemDao.insertDigestItems(newItems)
             }
 
-            // Notify home screen widget to refresh its content
-            context?.let { TopicNewsWidgetProvider.updateAllWidgets(it) }
+            // Update topic's lastUpdatedAt timestamp
+            topicDao.updateTopicLastUpdated(topic.id, System.currentTimeMillis())
+
+            // Notify both widgets
+            context?.let {
+                TopicNewsWidgetProvider.updateAllWidgets(it)
+                EventTickerWidgetProvider.updateAllWidgets(it)
+            }
 
             progressCallback?.invoke("Status updated!", 1.0f)
             Result.success(newItems.size)

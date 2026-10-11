@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/ticker_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:background="@drawable/widget_ticker_background"
+    android:paddingStart="10dp"
+    android:paddingEnd="6dp"
+    android:paddingTop="4dp"
+    android:paddingBottom="4dp">
+
+    <!-- News Icon -->
+    <ImageView
+        android:id="@+id/ticker_icon"
+        android:layout_width="16dp"
+        android:layout_height="16dp"
+        android:src="@drawable/ic_widget_news"
+        android:contentDescription="Daily Digest" />
+
+    <!-- Topic / Group Pill Badge -->
+    <TextView
+        android:id="@+id/ticker_topic_badge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:background="@drawable/ticker_badge_background"
+        android:paddingStart="6dp"
+        android:paddingEnd="6dp"
+        android:paddingTop="2dp"
+        android:paddingBottom="2dp"
+        android:text="TOPIC"
+        android:textColor="#38BDF8"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:maxLines="1"
+        android:ellipsize="end" />
+
+    <!-- Single-Line Event Summary -->
+    <TextView
+        android:id="@+id/ticker_event_text"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="8dp"
+        android:layout_marginEnd="6dp"
+        android:text="Summarised event headline loading..."
+        android:textColor="#F8FAFC"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:singleLine="true"
+        android:ellipsize="end" />
+
+    <!-- 5-min Rotation Counter (e.g. 1/8) -->
+    <TextView
+        android:id="@+id/ticker_counter"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="2dp"
+        android:text="1/1"
+        android:textColor="#94A3B8"
+        android:textSize="10sp" />
+
+    <!-- Next / Cycle Button -->
+    <ImageButton
+        android:id="@+id/ticker_btn_next"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:src="@drawable/ic_ticker_next"
+        android:scaleType="centerInside"
+        android:contentDescription="Cycle to next event" />
+
+</LinearLayout>

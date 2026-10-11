@@ -8,5 +8,8 @@ data class Topic(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
     val name: String,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val groupName: String? = null, // e.g. "Story Books", "AI & Tech", "Research"
+    val updateFrequency: String = "DAILY", // "DAILY", "WEEKLY", "BIWEEKLY", "MONTHLY"
+    val lastUpdatedAt: Long = 0L
 )

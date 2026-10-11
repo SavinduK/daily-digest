@@ -29,30 +29,60 @@ class RssFetcher(
     ): List<Article> = withContext(Dispatchers.IO) {
         val urlsToFetch = mutableListOf<FeedTarget>()
 
-        // 1. Build Google News RSS URL if keywords exist
-        if (keywords.isNotEmpty()) {
+        val primaryQuery = if (keywords.isNotEmpty()) {
             val terms = keywords.map { it.term.trim() }.filter { it.isNotBlank() }
             if (terms.isNotEmpty()) {
-                val orJoined = terms.joinToString(" OR ") { if (it.contains(" ")) "\"$it\"" else it }
-                val encoded = URLEncoder.encode(orJoined, "UTF-8")
-                val googleNewsUrl = "https://news.google.com/rss/search?q=$encoded+when:1d&hl=en-LK&gl=LK&ceid=LK:en"
-                urlsToFetch.add(FeedTarget(url = googleNewsUrl, fallbackPublisher = "Google News"))
+                terms.take(3).joinToString(" OR ") { if (it.contains(" ")) "\"$it\"" else it }
+            } else {
+                topic.name
             }
-        } else if (topic.name.isNotBlank()) {
-            // Fallback to topic name if no explicit keywords
-            val encoded = URLEncoder.encode("\"${topic.name}\"", "UTF-8")
-            val googleNewsUrl = "https://news.google.com/rss/search?q=$encoded+when:1d&hl=en-LK&gl=LK&ceid=LK:en"
-            urlsToFetch.add(FeedTarget(url = googleNewsUrl, fallbackPublisher = "Google News"))
+        } else {
+            topic.name
         }
 
-        // 2. Add each custom source feed URL
+        val encodedPrimary = URLEncoder.encode(primaryQuery, "UTF-8")
+        val encodedTopicName = URLEncoder.encode("\"${topic.name}\"", "UTF-8")
+
+        // 1. Google News RSS (Global search without strict 24h block to capture book releases & announcements)
+        urlsToFetch.add(
+            FeedTarget(
+                url = "https://news.google.com/rss/search?q=$encodedPrimary&hl=en-US&gl=US&ceid=US:en",
+                fallbackPublisher = "Google News"
+            )
+        )
+        if (encodedTopicName != encodedPrimary) {
+            urlsToFetch.add(
+                FeedTarget(
+                    url = "https://news.google.com/rss/search?q=$encodedTopicName&hl=en-US&gl=US&ceid=US:en",
+                    fallbackPublisher = "Google News"
+                )
+            )
+        }
+
+        // 2. Bing News RSS (secondary major news search engine)
+        urlsToFetch.add(
+            FeedTarget(
+                url = "https://www.bing.com/news/search?q=$encodedTopicName&format=rss",
+                fallbackPublisher = "Bing News"
+            )
+        )
+
+        // 3. Reddit RSS (for books, fandoms, emulators, and niche author discussions)
+        urlsToFetch.add(
+            FeedTarget(
+                url = "https://www.reddit.com/search.rss?q=$encodedTopicName&sort=new",
+                fallbackPublisher = "Reddit Community"
+            )
+        )
+
+        // 4. Custom user-defined source feeds
         sources.forEach { source ->
             if (source.feedUrl.isNotBlank()) {
                 urlsToFetch.add(FeedTarget(url = source.feedUrl.trim(), fallbackPublisher = source.name))
             }
         }
 
-        // 3. Fetch feeds concurrently
+        // 5. Fetch feeds concurrently
         val results = coroutineScope {
             urlsToFetch.map { target ->
                 async {
@@ -61,7 +91,7 @@ class RssFetcher(
             }.awaitAll().flatten()
         }
 
-        // 4. Deduplicate by URL and hash, sort by publishedAt DESC, keep top ~20
+        // 6. Deduplicate by URL and hash, sort by publishedAt DESC
         val seenUrls = mutableSetOf<String>()
         val seenHashes = mutableSetOf<String>()
         val deduped = mutableListOf<Article>()
@@ -85,7 +115,7 @@ class RssFetcher(
             }
         }
 
-        deduped.take(25)
+        deduped.take(30)
     }
 
     private fun fetchAndParse(target: FeedTarget): List<ParsedArticle> {
@@ -102,7 +132,6 @@ class RssFetcher(
             val bodyString = response.body?.string() ?: return emptyList()
             RssFeedParser.parse(bodyString, target.fallbackPublisher)
         } catch (e: Exception) {
-            e.printStackTrace()
             emptyList()
         }
     }

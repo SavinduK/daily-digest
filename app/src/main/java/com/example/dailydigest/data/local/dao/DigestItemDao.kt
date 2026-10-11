@@ -39,6 +39,9 @@ interface DigestItemDao {
     @Query("SELECT * FROM digest_items WHERE topicId = :topicId ORDER BY date DESC, id DESC LIMIT :limit")
     fun getRecentDigestItemsForTopicBlocking(topicId: Long, limit: Int = 4): List<DigestItem>
 
+    @Query("SELECT * FROM digest_items ORDER BY date DESC, id DESC LIMIT :limit")
+    fun getAllDigestItemsBlocking(limit: Int = 25): List<DigestItem>
+
     @Query("SELECT * FROM digest_items WHERE date = :date")
     suspend fun getDigestItemsForDateSync(date: String): List<DigestItem>
 

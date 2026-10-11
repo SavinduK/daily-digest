@@ -40,4 +40,19 @@ interface TopicDao {
 
     @Query("SELECT COUNT(*) FROM topics")
     suspend fun getTopicCount(): Int
+
+    @Query("UPDATE topics SET groupName = :groupName WHERE id = :id")
+    suspend fun updateTopicGroup(id: Long, groupName: String?)
+
+    @Query("UPDATE topics SET updateFrequency = :frequency WHERE id = :id")
+    suspend fun updateTopicFrequency(id: Long, frequency: String)
+
+    @Query("UPDATE topics SET lastUpdatedAt = :timestamp WHERE id = :id")
+    suspend fun updateTopicLastUpdated(id: Long, timestamp: Long)
+
+    @Query("SELECT DISTINCT groupName FROM topics WHERE groupName IS NOT NULL AND groupName != '' ORDER BY groupName ASC")
+    fun getAllGroupNames(): Flow<List<String>>
+
+    @Query("SELECT * FROM topics WHERE groupName = :groupName ORDER BY createdAt ASC")
+    fun getTopicsInGroup(groupName: String): Flow<List<Topic>>
 }

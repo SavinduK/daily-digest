@@ -6,6 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
@@ -75,10 +76,12 @@ fun MainAppContent(viewModel: DigestViewModel) {
         viewModel.selectTab(0)
     }
 
+    val showBottomBar = !isManagingTopics && selectedTopicForChat == null && selectedTopicForHistory == null
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         bottomBar = {
-            if (!isManagingTopics) {
+            if (showBottomBar) {
                 NavigationBar(
                     modifier = Modifier.testTag("bottom_navigation_bar"),
                     containerColor = MaterialTheme.colorScheme.surface,
@@ -120,7 +123,8 @@ fun MainAppContent(viewModel: DigestViewModel) {
         Surface(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding),
+                .padding(innerPadding)
+                .consumeWindowInsets(innerPadding),
             color = MaterialTheme.colorScheme.background
         ) {
             if (isManagingTopics) {
